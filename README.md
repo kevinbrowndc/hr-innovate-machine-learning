@@ -14,3 +14,7 @@ Planned. No CRM model has been implemented yet.
 
 ## Privacy
 Never commit service account credentials, private analytics exports, candidate data, or other confidential records. Public code is intended to be reusable without company datasets.
+
+## Historical forecast evaluation
+
+The first live forecast (October 11–17, 2026) predicted 936 sessions versus 773 actual, an overforecast of 163 sessions. [Read the daily comparison and lessons learned](projects/01_ga4_traffic_forecasting/reports/initial_forecast_oct11_17_2026.md). The subsequent V3 forecast and uncertainty ranges are [archived here](projects/01_ga4_traffic_forecasting/reports/v3_forecast_oct18_24_2026.csv).
