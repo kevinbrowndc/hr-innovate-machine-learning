@@ -1,0 +1,15 @@
+*.json
+!*.example.json
+.env
+.env.*
+!.env.example
+__pycache__/
+.ipynb_checkpoints/
+.venv/
+venv/
+*.pyc
+forecast_v2_results.csv
+forecast_v2_previous.csv
+forecast_v2_chart.png
+forecast_v2_previous_comparison.png
+*.log
