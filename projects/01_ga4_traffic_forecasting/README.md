@@ -1,5 +1,7 @@
 # GA4 Traffic Forecasting
 
+**Portfolio reading:** [Experiment 02 case study](reports/experiment_02_acquisition_source_forecasting.md) explains the hypothesis, real dataset, negative result and proposed hybrid experiment. The [verified technical report](reports/v3_vs_v4_comparison.md) retains the detailed evaluation; [repository overview](../../README.md) provides portfolio navigation.
+
 **Status:** Implemented.
 
 Daily sessions forecasting with the GA4 Data API and optional offline CSV input. Feature engineering uses calendar, lagged traffic, and rolling history. Random Forest, Histogram Gradient Boosting, and Ridge models are compared with walk-forward seven-day validation. The selected model forecasts a week of sessions with approximate 80% empirical error bounds and renders a whisker chart.
