@@ -13,3 +13,8 @@ forecast_v2_previous.csv
 forecast_v2_chart.png
 forecast_v2_previous_comparison.png
 *.log
+
+# V4 private analytics, local forecast runs and executed notebooks
+local-v4/
+.pytest_cache/
+*.executed.ipynb

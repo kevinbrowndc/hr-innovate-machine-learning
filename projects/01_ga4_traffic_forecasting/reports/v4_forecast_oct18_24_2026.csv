@@ -1,0 +1,8 @@
+date,v3_original_predicted_sessions,v4_predicted_sessions,v3_adapted_predicted_sessions,status,training_cutoff
+2026-10-18,57,70.807095,57.463304,live_data_retrospective_simulation,2026-10-17
+2026-10-19,145,168.045439,144.554130,live_data_retrospective_simulation,2026-10-17
+2026-10-20,137,152.144237,136.997978,live_data_retrospective_simulation,2026-10-17
+2026-10-21,149,146.991284,148.918599,live_data_retrospective_simulation,2026-10-17
+2026-10-22,125,122.513388,125.431714,live_data_retrospective_simulation,2026-10-17
+2026-10-23,109,110.540863,109.474503,live_data_retrospective_simulation,2026-10-17
+2026-10-24,58,69.688211,58.139652,live_data_retrospective_simulation,2026-10-17
