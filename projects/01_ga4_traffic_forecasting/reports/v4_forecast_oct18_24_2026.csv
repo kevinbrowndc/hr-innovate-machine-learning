@@ -1,0 +1,8 @@
+date,v3_original_predicted_sessions,v4_predicted_sessions,status,training_cutoff
+2026-10-18,57,,blocked_no_live_source_data,2026-10-17
+2026-10-19,145,,blocked_no_live_source_data,2026-10-17
+2026-10-20,137,,blocked_no_live_source_data,2026-10-17
+2026-10-21,149,,blocked_no_live_source_data,2026-10-17
+2026-10-22,125,,blocked_no_live_source_data,2026-10-17
+2026-10-23,109,,blocked_no_live_source_data,2026-10-17
+2026-10-24,58,,blocked_no_live_source_data,2026-10-17
