@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import ast
 from datetime import datetime, timezone
+from functools import lru_cache
 import hashlib
 from importlib.metadata import version
 import json
@@ -135,9 +136,12 @@ def validate_frame(frame, keys):
     return frame.sort_values("date")
 
 
-def prepare(raw, aggregate, cutoff):
+def prepare(raw, aggregate, cutoff, reconciliation_tolerance=0):
     # Truncate BEFORE validation, grouping, source discovery or model selection.
     cutoff = pd.Timestamp(cutoff)
+    if (not isinstance(reconciliation_tolerance, int)
+            or not 0 <= reconciliation_tolerance <= 2):
+        raise ValueError("Reconciliation tolerance must be an integer from 0 to 2 sessions")
     raw = raw.loc[pd.to_datetime(raw.date) <= cutoff].copy()
     aggregate = aggregate.loc[pd.to_datetime(aggregate.date) <= cutoff].copy()
     raw = validate_frame(raw, DIMENSIONS)
@@ -150,9 +154,13 @@ def prepare(raw, aggregate, cutoff):
         raise ValueError("Missing aggregate dates; never assume an outage is zero traffic")
     if not raw.date.isin(dates).all():
         raise ValueError("Source dates outside aggregate coverage")
+    absent = dates.difference(raw.date)
+    if (total.reindex(absent) > 0).any():
+        raise ValueError("Missing source report dates with positive aggregate sessions")
     source_total = raw.groupby("date").sessions.sum().reindex(dates, fill_value=0)
-    if not np.array_equal(source_total.to_numpy(), total.to_numpy()):
-        raise ValueError("Source totals do not reconcile exactly with independent daily totals")
+    difference = source_total.to_numpy() - total.to_numpy()
+    if (np.abs(difference) > reconciliation_tolerance).any():
+        raise ValueError("Source totals exceed the permitted daily reconciliation discrepancy")
     raw["channel"] = [classify(*v) for v in raw[DIMENSIONS[1:]].itertuples(index=False, name=None)]
     panel = raw.pivot_table(index="date", columns="channel", values="sessions", aggfunc="sum")
     # Absent source cells are zero only after complete daily totals reconcile.
@@ -169,13 +177,30 @@ def group_channels(panel, min_share):
 
 
 def predict(series, name, bias=0):
+    # Repeated inner origins fit identical histories. Cache full histories, never just dates.
+    # Immutable cached results and fresh returned arrays prevent callers mutating the cache.
+    return np.asarray(_predict_cached(tuple(series.index), tuple(series.to_numpy(dtype=float)),
+                                     name, float(bias)), dtype=float)
+
+
+@lru_cache(maxsize=512)
+def _predict_cached(dates, values, name, bias):
+    return tuple(_predict_uncached(pd.Series(values, index=pd.DatetimeIndex(dates)), name, bias))
+
+
+@lru_cache(maxsize=128)
+def _training_cached(dates, values):
+    return V3.training_data(pd.Series(values, index=pd.DatetimeIndex(dates)))
+
+
+def _predict_uncached(series, name, bias=0):
     if len(series) < 56:
         raise ValueError("At least 56 training days required")
     if name == "Seasonal":
         return series.iloc[-7:].to_numpy(dtype=float)
-    X, y, origin = V3.training_data(series)
+    X, y, origin = _training_cached(tuple(series.index), tuple(series.to_numpy(dtype=float)))
     model = V3.model_factory(name)
-    model.fit(X, y)
+    model.fit(X.copy(), y.copy())
     return V3.recursive_forecast(model, series, series.index[-1] + pd.Timedelta(days=1), 7, origin, bias)
 
 
@@ -197,16 +222,19 @@ def forecast_v3(total, inner_weeks=8):
     return predict(total, best, bias), {"model": best, "bias": bias}
 
 
-def forecast_v4(panel, inner_weeks=8, shares=(0.0, 0.02)):
+def forecast_v4(panel, inner_weeks=8, shares=(0.0, 0.02), aggregate=None):
     # One model family per panel; both model and grouping policy selected in inner folds.
     scores = {}
+    truth_total = panel.sum(axis=1) if aggregate is None else aggregate
+    if not truth_total.index.equals(panel.index):
+        raise ValueError("Aggregate training dates must match the source panel")
     for share in shares:
         for name in MODELS:
             errors = []
             for i in inner_origins(len(panel), inner_weeks):
                 train = group_channels(panel.iloc[:i], share)
                 pred = sum((predict(train[c], name) for c in train), np.zeros(7))
-                truth = panel.iloc[i:i+7].sum(axis=1).to_numpy()
+                truth = truth_total.iloc[i:i+7].to_numpy()
                 errors.extend(np.abs(pred - truth))
             scores[(share, name)] = float(np.mean(errors))
     share, name = min(scores, key=scores.get)
@@ -226,14 +254,14 @@ def metrics(actual, predicted):
             "total_error_pct": float(e.sum() / a.sum() * 100) if a.sum() else None}
 
 
-def backtest(panel, total, outer_weeks=8, inner_weeks=8):
+def backtest(panel, total, outer_weeks=8, inner_weeks=8, progress=None):
     if outer_weeks < 1 or len(total) - (outer_weeks + inner_weeks) * 7 < 56:
         raise ValueError("Insufficient history for nested backtest")
     rows, source_rows, selections = [], [], []
     for i in range(len(total) - outer_weeks * 7, len(total), 7):
         train, truth = total.iloc[:i], total.iloc[i:i+7]
         v3, m3 = forecast_v3(train, inner_weeks)
-        channels, m4 = forecast_v4(panel.iloc[:i], inner_weeks)
+        channels, m4 = forecast_v4(panel.iloc[:i], inner_weeks, aggregate=train)
         selections.append({"cutoff": str(train.index[-1].date()), "v3": m3, "v4": m4})
         forecasts = {"V3 adapted": v3, "V4": channels.sum(axis=1).to_numpy(),
                      "Seasonal": predict(train, "Seasonal")}
@@ -246,6 +274,8 @@ def backtest(panel, total, outer_weeks=8, inner_weeks=8):
         for model, values in forecasts.items():
             for d, a, p in zip(truth.index, truth, values):
                 rows.append(dict(cutoff=train.index[-1], date=d, model=model, actual=a, predicted=p))
+        if progress:
+            progress(f"Completed historical cutoff {train.index[-1].date()}")
     return pd.DataFrame(rows), pd.DataFrame(source_rows), selections
 
 
@@ -273,19 +303,24 @@ def synthetic_fixture(days=196, end="2026-10-17"):
     return raw, raw.groupby("date", as_index=False).sessions.sum()
 
 
-def run(raw, aggregate, cutoff, output, outer_weeks=8, inner_weeks=8, fixture=False):
-    panel, total = prepare(raw, aggregate, cutoff)
+def run(raw, aggregate, cutoff, output, outer_weeks=8, inner_weeks=8, fixture=False,
+        reconciliation_tolerance=0):
+    panel, total = prepare(raw, aggregate, cutoff, reconciliation_tolerance)
     output = Path(output)
     # A new directory is required, making forecasts immutable across repeated runs.
     output.mkdir(parents=True, exist_ok=False)
-    rows, source_rows, selections = backtest(panel, total, outer_weeks, inner_weeks)
-    channels, selection = forecast_v4(panel, inner_weeks)
+    rows, source_rows, selections = backtest(panel, total, outer_weeks, inner_weeks,
+                                            progress=lambda message: print(message, flush=True))
+    channels, selection = forecast_v4(panel, inner_weeks, aggregate=total)
     v3, selected_v3 = forecast_v3(total, inner_weeks)
     forecast = pd.DataFrame({"date": channels.index, "v4": channels.sum(axis=1).to_numpy(),
                              "v3_adapted": v3})
     forecast["status"] = "SYNTHETIC FIXTURE" if fixture else "retrospective simulation / as-of forecast"
+    reconciliation = pd.DataFrame({"date": total.index, "aggregate": total.to_numpy(),
+                                   "source_sum": panel.sum(axis=1).to_numpy()})
+    reconciliation["difference"] = reconciliation["source_sum"] - reconciliation["aggregate"]
     for name, frame in {"forecast": forecast, "channels": channels.reset_index(names="date"),
-                        "backtest": rows, "source_errors": source_rows,
+                        "backtest": rows, "source_errors": source_rows, "reconciliation": reconciliation,
                         "metrics": summarize(rows, ["model"]),
                         "weekly_metrics": summarize(rows, ["model", "cutoff"]),
                         "weekday_metrics": summarize(rows.assign(weekday=rows.date.dt.day_name()), ["model", "weekday"]),
@@ -295,6 +330,7 @@ def run(raw, aggregate, cutoff, output, outer_weeks=8, inner_weeks=8, fixture=Fa
         return hashlib.sha256(frame.to_csv(index=False).encode("utf-8")).hexdigest()
     manifest = {"cutoff": str(pd.Timestamp(cutoff).date()), "fixture": fixture,
                 "created_utc": datetime.now(timezone.utc).isoformat(),
+                "reconciliation_tolerance_sessions": reconciliation_tolerance,
                 "input_sha256": {"sources": digest(raw), "aggregate": digest(aggregate)},
                 "versions": {p: version(p) for p in ["numpy", "pandas", "scikit-learn", "google-analytics-data"]},
                 "v4": selection, "v3_adapted": selected_v3, "backtest_selections": selections,
@@ -313,6 +349,8 @@ def main():
     ap.add_argument("--output", required=True, help="New local output directory; never overwritten")
     ap.add_argument("--outer-weeks", type=int, default=8)
     ap.add_argument("--inner-weeks", type=int, default=8)
+    ap.add_argument("--reconciliation-tolerance", type=int, default=0,
+                    help="Explicit permitted daily discrepancy (0-2 sessions); no rescaling")
     args = ap.parse_args()
     if args.fixture and (args.sources_csv or args.aggregate_csv):
         ap.error("Choose fixture OR private CSV inputs")
@@ -325,7 +363,7 @@ def main():
     else:
         raw, aggregate = fetch_ga4(args.start, args.cutoff)
     forecast, rows = run(raw, aggregate, args.cutoff, args.output,
-                         args.outer_weeks, args.inner_weeks, args.fixture)
+                         args.outer_weeks, args.inner_weeks, args.fixture, args.reconciliation_tolerance)
     print(forecast.to_string(index=False))
     print(summarize(rows, ["model"]).to_string(index=False))
 

@@ -1,0 +1,4 @@
+model,mae,bias_sessions,mape_pct,zero_actual_days,total_error_pct
+Seasonal,39.892857,1.750000,34.043538,0,1.521739
+V3 adapted,29.744902,-4.565877,24.395233,0,-3.970328
+V4,30.515939,5.010205,27.787062,0,4.356700

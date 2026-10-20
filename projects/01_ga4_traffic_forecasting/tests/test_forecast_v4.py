@@ -135,12 +135,68 @@ def test_zero_aggregate_day_is_valid_only_with_reconciliation(data):
         v4.prepare(raw, agg.loc[agg.date != day], "2026-10-17")
 
 
+def test_explicit_reconciliation_tolerance_retains_reported_counts(data):
+    raw, agg = data
+    agg.loc[0, "sessions"] -= 2
+    with pytest.raises(ValueError, match="reconciliation"):
+        v4.prepare(raw, agg, "2026-10-17")
+    panel, total = v4.prepare(raw, agg, "2026-10-17", reconciliation_tolerance=2)
+    assert panel.iloc[0].sum() - total.iloc[0] == 2
+    agg.loc[0, "sessions"] -= 1
+    with pytest.raises(ValueError, match="reconciliation"):
+        v4.prepare(raw, agg, "2026-10-17", reconciliation_tolerance=2)
+
+
+def test_tolerance_cannot_hide_missing_positive_day(data):
+    raw, agg = data
+    day = agg.date.iloc[0]
+    raw = raw.loc[raw.date != day]
+    agg.loc[agg.date == day, "sessions"] = 1
+    with pytest.raises(ValueError, match="Missing source report dates"):
+        v4.prepare(raw, agg, "2026-10-17", reconciliation_tolerance=2)
+
+
+def test_forecast_cache_matches_uncached_and_isolates_results(data):
+    _, total = v4.prepare(*data, "2026-10-17")
+    cached = v4.predict(total, "Ridge")
+    np.testing.assert_allclose(cached, v4._predict_uncached(total, "Ridge"))
+    cached[0] = -999
+    assert v4.predict(total, "Ridge")[0] >= 0
+    changed = total.copy()
+    changed.iloc[-1] += 100
+    np.testing.assert_allclose(v4.predict(changed, "Ridge"), v4._predict_uncached(changed, "Ridge"))
+
+
+def test_v4_selection_scores_independent_aggregate(data, monkeypatch):
+    panel, total = v4.prepare(*data, "2026-10-17")
+    monkeypatch.setattr(v4, "MODELS", ["Seasonal"])
+    _, info = v4.forecast_v4(panel, inner_weeks=1, shares=(0,), aggregate=total + 100)
+    expected = np.abs(panel.iloc[-14:-7].sum(axis=1).to_numpy()
+                      - (total.iloc[-7:].to_numpy() + 100)).mean()
+    assert info["inner_mae"] == pytest.approx(expected)
+
+
 def test_outputs_cannot_overwrite_existing_forecast(data, tmp_path):
     sentinel = tmp_path / "forecast.csv"
     sentinel.write_text("preserve me")
     with pytest.raises(FileExistsError):
         v4.run(*data, "2026-10-17", tmp_path, 1, 1, True)
     assert sentinel.read_text() == "preserve me"
+
+
+def test_end_to_end_exports_independent_reconciliation(data, tmp_path):
+    import json
+    raw, agg = data
+    agg.loc[0, "sessions"] -= 1
+    output = tmp_path / "new_run"
+    forecast, rows = v4.run(raw, agg, "2026-10-17", output, 1, 1, True, 2)
+    reconciliation = pd.read_csv(output / "reconciliation.csv")
+    assert reconciliation["difference"].sum() == 1
+    assert reconciliation["aggregate"].sum() == agg.sessions.sum()
+    assert len(pd.read_csv(output / "forecast.csv")) == len(forecast) == 7
+    assert len(rows) == 21
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["fixture"] and manifest["reconciliation_tolerance_sessions"] == 2
 
 
 def test_v3_adapter_matches_helpers(data):
