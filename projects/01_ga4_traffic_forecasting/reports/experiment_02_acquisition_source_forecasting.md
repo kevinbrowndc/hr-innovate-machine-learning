@@ -1,7 +1,9 @@
 # Experiment 02: Does Acquisition-Source Modeling Improve Website Traffic Forecasting?
 
-**Organization:** HR Innovate  
-**Evidence:** verified live analysis at commit `5243166`  
+**Organization:** HR Innovate
+
+**Evidence:** verified live analysis at commit `5243166`
+
 **Outcome:** hypothesis not supported; V3 remains the forecasting benchmark.
 
 This case study presents the completed experiment for portfolio readers. The [verified technical evaluation](v3_vs_v4_comparison.md) is preserved as the detailed record. No models were changed or retrained, and no new forecasts were generated for this publication.
