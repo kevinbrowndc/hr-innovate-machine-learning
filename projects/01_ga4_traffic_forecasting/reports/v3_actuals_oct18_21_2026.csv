@@ -1,0 +1,5 @@
+date,predicted_sessions,actual_sessions,error_predicted_minus_actual,absolute_error,absolute_percentage_error
+2026-10-18,57,48,9,9,18.75
+2026-10-19,145,120,25,25,20.833333
+2026-10-20,137,139,-2,2,1.438849
+2026-10-21,149,142,7,7,4.929577
