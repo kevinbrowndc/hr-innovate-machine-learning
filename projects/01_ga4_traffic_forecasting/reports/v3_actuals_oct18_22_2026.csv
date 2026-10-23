@@ -1,0 +1,8 @@
+date,predicted_sessions,actual_sessions,status
+2026-10-18,57,48,observed
+2026-10-19,145,120,observed
+2026-10-20,137,139,observed
+2026-10-21,149,142,observed
+2026-10-22,125,178,observed_subject_to_ga4_revision
+2026-10-23,109,,pending
+2026-10-24,58,,pending
