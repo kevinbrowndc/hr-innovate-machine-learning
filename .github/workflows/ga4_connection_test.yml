@@ -8,38 +8,30 @@ permissions:
 
 jobs:
   test-ga4:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       - name: Install GA4 client
-        run: pip install google-analytics-data
-      - name: Fetch yesterday's sessions
+        run: pip install -r projects/01_ga4_traffic_forecasting/requirements-pilot.txt
+      - name: Verify finalized Cyprus daily data without logging sessions
         env:
           GA4_PROPERTY_ID: ${{ vars.GA4_PROPERTY_ID }}
           GA4_CREDENTIALS_JSON: ${{ secrets.GA4_CREDENTIALS_JSON }}
         run: |
           python - <<'PY'
-          import json, os
-          from datetime import date, timedelta
-          from google.analytics.data_v1beta import BetaAnalyticsDataClient
-          from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Metric
-          from google.oauth2 import service_account
-
-          info = json.loads(os.environ["GA4_CREDENTIALS_JSON"])
-          if info.get("type") != "service_account":
-              raise ValueError("GA4_CREDENTIALS_JSON must contain service-account credentials")
-          creds = service_account.Credentials.from_service_account_info(
-              info, scopes=["https://www.googleapis.com/auth/analytics.readonly"]
-          )
-          client = BetaAnalyticsDataClient(credentials=creds)
-          response = client.run_report(RunReportRequest(
-              property="properties/" + os.environ["GA4_PROPERTY_ID"],
-              date_ranges=[DateRange(start_date="yesterday", end_date="yesterday")],
-              metrics=[Metric(name="sessions")],
-          ))
-          sessions = response.rows[0].metric_values[0].value if response.rows else "0"
-          print("GA4 yesterday sessions:", sessions)
+          import sys
+          sys.path.insert(0, "projects/01_ga4_traffic_forecasting/src")
+          from weekly_pilot import fetch_daily, finalized_through, utcnow
+          try:
+              day = finalized_through(utcnow())
+              fetch_daily(day, day)
+          except Exception:
+              print("GA4 connection/data-quality check failed; no private details logged")
+              raise SystemExit(1)
+          print("GA4 connection, Cyprus timezone and finalized-day coverage verified")
           PY

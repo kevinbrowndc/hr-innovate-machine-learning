@@ -1,0 +1,20 @@
+name: GA4 pilot offline tests
+on:
+  pull_request:
+  push:
+    branches: [main, codex/ga4-prospective-pilot]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r projects/01_ga4_traffic_forecasting/requirements-pilot.txt pytest==9.1.1
+      - run: python -m pytest projects/01_ga4_traffic_forecasting/tests/test_weekly_pilot.py -q
+        env:
+          MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+          OMP_NUM_THREADS: '1'

@@ -13,3 +13,9 @@ forecast_v2_previous.csv
 forecast_v2_chart.png
 forecast_v2_previous_comparison.png
 *.log
+
+# Private analysis and pilot previews; never upload as public workflow artifacts.
+local-v4/
+local-pilot/
+.pytest_cache/
+*.executed.ipynb
