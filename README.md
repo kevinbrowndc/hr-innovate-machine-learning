@@ -4,6 +4,10 @@ Public portfolio of applied machine learning projects, including website traffic
 
 ## GA4 traffic forecasting
 
+### Prospective weekly pilot (prepared; not activated)
+
+The [eight-week pilot setup guide](projects/01_ga4_traffic_forecasting/docs/weekly_pilot.md) describes the frozen Random Forest, private create-only forecast archive, genuine saved-forecast evaluation, Cyprus scheduling, and gated Kevin-only test emails. Archive and SMTP configuration are still required. Historical files below are preserved and are not imported into prospective scoring.
+
 Implemented: live GA4 API retrieval, calendar and lag features, Random Forest, Gradient Boosting, Ridge regression, seven-day walk-forward evaluation, bias adjustment, and approximate 80% prediction intervals.
 
 Source: `projects/01_ga4_traffic_forecasting/src/forecast_v3_ga4.py`
