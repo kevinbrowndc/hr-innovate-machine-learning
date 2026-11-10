@@ -24,7 +24,7 @@ jobs:
   pilot:
     if: github.ref == 'refs/heads/main' && (vars.PILOT_ENABLED == 'true' || inputs.mode == 'verify-email' || inputs.mode == 'validate')
     environment: ga4-pilot
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       GA4_PROPERTY_ID: ${{ vars.GA4_PROPERTY_ID }}
@@ -42,8 +42,8 @@ jobs:
       PILOT_MODE: ${{ inputs.mode || 'weekly' }}
       OMP_NUM_THREADS: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
