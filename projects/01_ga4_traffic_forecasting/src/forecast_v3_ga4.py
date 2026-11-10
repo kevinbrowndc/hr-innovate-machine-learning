@@ -101,7 +101,9 @@ def main():
     ap.add_argument("--property-id", default=os.environ.get("GA4_PROPERTY_ID"))
     ap.add_argument("--backtest-weeks", type=int, default=8)
     args = ap.parse_args()
-    if not args.csv and not args.property_id:\n        ap.error("Set GA4_PROPERTY_ID or supply --property-id when using the live GA4 API.")\n    df = pd.read_csv(args.csv) if args.csv else fetch_ga4(args.property_id, args.credentials)
+    if not args.csv and not args.property_id:
+        ap.error("Set GA4_PROPERTY_ID or supply --property-id when using the live GA4 API.")
+    df = pd.read_csv(args.csv) if args.csv else fetch_ga4(args.property_id, args.credentials)
     if not {"date", "sessions"}.issubset(df.columns):
         raise ValueError("CSV needs columns named date and sessions.")
     df["date"] = pd.to_datetime(df["date"], errors="raise").dt.normalize()

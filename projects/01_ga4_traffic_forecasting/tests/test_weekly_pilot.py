@@ -203,11 +203,11 @@ def test_email_disabled_never_connects(report, monkeypatch):
         mail.deliver_report(*report)
 
 
-def test_test_only_recipient_and_no_duplicate_send(report, monkeypatch):
+def test_approved_executive_recipients_and_no_duplicate_send(report, monkeypatch):
     store, spec, evaluation, forward = report
     config = {"SMTP_FROM": "sender@example.test"}
     monkeypatch.setenv("EMAIL_DELIVERY_ENABLED", "true")
-    monkeypatch.setenv("EMAIL_TO", "katerina@hrinnovate.org")  # Must have no effect.
+    monkeypatch.setenv("EMAIL_TO", "unapproved@example.test")  # Must have no effect.
     monkeypatch.setattr(mail, "configuration", lambda: config)
     store.create('test-pilot/smtp-verified.json', encoded({"configuration_sha256": mail.fingerprint(config)}))
     sent = []
@@ -219,12 +219,56 @@ def test_test_only_recipient_and_no_duplicate_send(report, monkeypatch):
             return {}
     monkeypatch.setattr(mail, "connection", lambda _: Server())
     mail.deliver_report(*report)
-    assert sent[0][0]["To"] == "kevinbrown.dc@gmail.com"
-    assert sent[0][1]["to_addrs"] == ["kevinbrown.dc@gmail.com"]
+    assert sent[0][0]["To"] == "kevinbrown.dc@gmail.com, katerina@hrinnovate.org"
+    assert sent[0][1]["to_addrs"] == ["kevinbrown.dc@gmail.com", "katerina@hrinnovate.org"]
     assert sent[0][0]["Cc"] is None and sent[0][0]["Bcc"] is None
     with pytest.raises(Withheld, match="already attempted"):
         mail.deliver_report(*report)
     assert len(sent) == 1
+
+
+def test_recipient_policy_requires_new_transport_verification(monkeypatch):
+    config = {"SMTP_FROM": "sender@example.test", "SMTP_PASSWORD": "secret"}
+    before = mail.fingerprint(config)
+    monkeypatch.setattr(mail, "RECIPIENTS", ("kevinbrown.dc@gmail.com",))
+    assert mail.fingerprint(config) != before
+
+
+def test_changed_smtp_verification_is_not_reported_as_success(pilot, monkeypatch):
+    store, spec, sha, model = pilot
+    store.create("test-pilot/smtp-verified.json", encoded({"configuration_sha256": "old"}))
+    before = dict(store.data)
+    monkeypatch.setenv("PILOT_ID", "test-pilot")
+    monkeypatch.setattr(sys, "argv", ["weekly_pilot.py", "verify-email"])
+    monkeypatch.setattr(p, "GitHubArchive", lambda *a: store)
+    monkeypatch.setattr(mail, "verify_transport", lambda: "new")
+    with pytest.raises(Withheld, match="differs"):
+        p.main()
+    assert store.data == before
+
+
+def test_read_only_live_validation_never_writes_fits_or_sends(pilot, history, monkeypatch):
+    store, spec, sha, model = pilot
+    before = dict(store.data)
+    monkeypatch.setenv("PILOT_ID", "test-pilot")
+    monkeypatch.setattr(sys, "argv", ["weekly_pilot.py", "validate"])
+    monkeypatch.setattr(p, "utcnow", lambda: ISSUED)
+    monkeypatch.setattr(p, "GitHubArchive", lambda *a: store)
+    monkeypatch.setattr(p, "fetch_daily", lambda *a: history)
+    monkeypatch.setattr(p, "fit", lambda *a: pytest.fail("Validation refitted model"))
+    monkeypatch.setattr(mail, "connection", lambda *a: pytest.fail("Validation connected SMTP"))
+    p.main()
+    assert store.data == before
+
+
+def test_read_only_validation_rejects_uninitialized_pilot(monkeypatch):
+    store = MemoryArchive()
+    monkeypatch.setenv("PILOT_ID", "missing")
+    monkeypatch.setattr(sys, "argv", ["weekly_pilot.py", "validate"])
+    monkeypatch.setattr(p, "GitHubArchive", lambda *a: store)
+    with pytest.raises(Withheld, match="not been initialized"):
+        p.main()
+    assert not store.data
 
 
 class Response:

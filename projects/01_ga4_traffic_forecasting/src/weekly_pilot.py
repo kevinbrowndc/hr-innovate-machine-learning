@@ -22,7 +22,7 @@ MODEL = "Random Forest"
 WEEKS = 8
 LAG_HOURS = 72
 ROOT = Path(__file__).resolve().parent
-# Load archived pure helpers only. The historical main() has a literal-newline typo.
+# Load archived pure helpers only, without invoking the historical main routine.
 helpers = {}
 exec(compile((ROOT / "forecast_v3_ga4.py").read_text(encoding="utf-8").split("def fetch_ga4")[0],
              "archived_v3_helpers", "exec"), helpers)
@@ -278,7 +278,7 @@ def evaluate(store, spec, spec_hash, actuals, now):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["initialize", "weekly", "verify-email"])
+    parser.add_argument("mode", choices=["initialize", "weekly", "verify-email", "validate"])
     args = parser.parse_args()
     pilot_id = os.environ.get("PILOT_ID", "")
     if not re.fullmatch(r"[a-z0-9-]{1,60}", pilot_id):
@@ -288,11 +288,27 @@ def main():
         print("Skipped: outside Cyprus Sunday 22:30–22:59 window")
         return
     store = GitHubArchive(os.environ.get("FORECAST_ARCHIVE_REPO"), os.environ.get("FORECAST_ARCHIVE_TOKEN"))
+    if args.mode == "validate":
+        # Read-only live validation: no fitting, forecasts, delivery claims or SMTP.
+        spec, spec_hash, model = load_pilot(store, pilot_id)
+        history = fetch_daily(date(2022, 5, 16), finalized_through(now))
+        first = date.fromisoformat(spec["start"])
+        for i in range(WEEKS + 2):
+            target = first + timedelta(weeks=i)
+            saved = store.read(week_key(pilot_id, target))
+            if saved is not None or boundary(target) <= now:
+                validate_saved(saved, spec, spec_hash, target)
+        print("Private archive, frozen model, finalized GA4 history and issued forecast provenance verified; no writes or email")
+        return
     if args.mode == "verify-email":
         from pilot_email import verify_transport
         configuration_hash = verify_transport()
-        if not store.read(f"{pilot_id}/smtp-verified.json"):
-            store.create(f"{pilot_id}/smtp-verified.json", encoded({"verified_at": now.isoformat(),
+        key = f"{pilot_id}/smtp-verified.json"
+        existing = store.json(key)
+        if existing and existing[0].get("configuration_sha256") != configuration_hash:
+            raise Withheld("SMTP verification record differs; immutable record retained; manual review required")
+        if existing is None:
+            store.create(key, encoded({"verified_at": now.isoformat(),
                          "configuration_sha256": configuration_hash}))
         print("SMTP TLS/login verified; no message sent")
         return

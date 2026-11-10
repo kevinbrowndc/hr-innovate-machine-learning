@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Initialize once, run weekly, or verify SMTP without sending
+        description: Initialize, run weekly, validate read-only, or verify SMTP without sending
         required: true
         type: choice
-        options: [weekly, initialize, verify-email]
+        options: [weekly, initialize, validate, verify-email]
         default: weekly
   schedule:
     # 22:30 Cyprus: UTC+3 summer / UTC+2 winter. Python gates the inactive slot.
@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   pilot:
-    if: github.ref == 'refs/heads/main' && (vars.PILOT_ENABLED == 'true' || inputs.mode == 'verify-email')
+    if: github.ref == 'refs/heads/main' && (vars.PILOT_ENABLED == 'true' || inputs.mode == 'verify-email' || inputs.mode == 'validate')
     environment: ga4-pilot
     runs-on: ubuntu-latest
     timeout-minutes: 45

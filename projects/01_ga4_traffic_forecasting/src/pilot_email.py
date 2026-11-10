@@ -1,4 +1,4 @@
-"""Executive HTML email, private inline chart, and a single hard-coded test recipient."""
+"""Executive HTML email with an explicitly approved, fixed recipient list."""
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import parseaddr
@@ -15,7 +15,7 @@ import numpy as np
 
 from pilot_archive import Withheld, digest, encoded
 
-TEST_RECIPIENT = "kevinbrown.dc@gmail.com"
+RECIPIENTS = ("kevinbrown.dc@gmail.com", "katerina@hrinnovate.org")
 
 
 def configuration():
@@ -31,7 +31,8 @@ def configuration():
 
 
 def fingerprint(config):
-    return digest(encoded({k: v for k, v in config.items() if k != "SMTP_PASSWORD"}))
+    return digest(encoded({"transport": {k: v for k, v in config.items() if k != "SMTP_PASSWORD"},
+                           "recipients": list(RECIPIENTS)}))
 
 
 def connection(config):
@@ -96,7 +97,7 @@ def render(evaluation, forward, interval_label):
                            for d, p, low, high in zip(forward["dates"], forward["predicted"], forward["lower"], forward["upper"]))
     html = f"""<!doctype html><html><body style="margin:0;background:#f1f4f8;font-family:Arial,sans-serif;color:#152439">
     <main style="max-width:800px;margin:auto;padding:28px;background:white">
-    <p style="color:#52637b">TEST DELIVERY · HR INNOVATE · CYPRUS LOCAL DATES</p>
+    <p style="color:#52637b">HR INNOVATE · PROSPECTIVE PILOT · CYPRUS LOCAL DATES</p>
     <h1>Weekly website traffic forecast</h1>
     <p><strong>{len(evaluation['weeks'])} of 8 finalized pilot weeks</strong> scored from forecasts archived before their target dates.</p>
     <p>Latest evaluated week: {record['dates'][0]}–{record['dates'][-1]}. The current unfinished week is not scored.</p>
@@ -110,7 +111,7 @@ def render(evaluation, forward, interval_label):
     <table cellpadding="9" cellspacing="0" border="1" style="border-collapse:collapse;width:100%">
     <tr><th>Cyprus date</th><th>Expected sessions</th><th>Prediction interval</th></tr>{forward_rows}</table>
     <p>Forward predictions were saved before the target period. They are not observed traffic. GA4 actuals may still be revised after the 72-hour readiness buffer.</p>
-    <p style="font-size:12px;color:#52637b">Test recipient only: {TEST_RECIPIENT}. No organizational delivery is enabled.</p>
+    <p style="font-size:12px;color:#52637b">Private executive report for Kevin and Katerina.</p>
     </main></body></html>"""
     return html, out.getvalue()
 
@@ -128,16 +129,16 @@ def deliver_report(store, spec, evaluation, forward):
         raise Withheld("Delivery already attempted; no automatic duplicate or ambiguous retry")
     message = EmailMessage()
     message["From"] = config["SMTP_FROM"]
-    message["To"] = TEST_RECIPIENT
-    message["Subject"] = "[TEST] HR Innovate weekly traffic pilot"
-    message.set_content("Private test report. Open the HTML version for the saved-forecast comparison and forward outlook.")
+    message["To"] = ", ".join(RECIPIENTS)
+    message["Subject"] = "HR Innovate weekly traffic pilot"
+    message.set_content("Private executive report. Open the HTML version for the saved-forecast comparison and forward outlook.")
     message.add_alternative(html, subtype="html")
     message.get_payload()[-1].add_related(chart, maintype="image", subtype="png", cid="<forecast-chart>")
     store.create(key + ".claim.json", encoded({"attempted_at": datetime.now(timezone.utc).isoformat(),
-                 "recipient": TEST_RECIPIENT, "report_sha256": digest(html.encode())}))
+                 "recipients": list(RECIPIENTS), "report_sha256": digest(html.encode())}))
     with connection(config) as server:
-        refused = server.send_message(message, from_addr=config["SMTP_FROM"], to_addrs=[TEST_RECIPIENT])
+        refused = server.send_message(message, from_addr=config["SMTP_FROM"], to_addrs=list(RECIPIENTS))
         if refused:
             raise Withheld("SMTP recipient rejected")
     store.create(key + ".sent.json", encoded({"accepted_at": datetime.now(timezone.utc).isoformat(),
-                                             "recipient": TEST_RECIPIENT}))
+                                             "recipients": list(RECIPIENTS)}))
