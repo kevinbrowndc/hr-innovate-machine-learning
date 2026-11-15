@@ -326,6 +326,9 @@ def main():
     history = fetch_daily(date(2022, 5, 16), finalized_through(now))
     forward = freeze_forecast(store, spec, spec_hash, model, history, target, utcnow())
     # Forecast persistence happens even when actuals are unavailable or delivery disabled.
+    if args.mode == "initialize":
+        print("Frozen pilot and first prospective forecast persisted; evaluation begins after the first finalized week")
+        return
     evaluation = evaluate(store, spec, spec_hash, history, utcnow())
     from pilot_email import deliver_report
     deliver_report(store, spec, evaluation, forward)
