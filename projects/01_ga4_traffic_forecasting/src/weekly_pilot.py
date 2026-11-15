@@ -314,8 +314,8 @@ def main():
         return
     if args.mode == "initialize":
         start = date.fromisoformat(os.environ["PILOT_START_DATE"])
-        if start != now.astimezone(CYPRUS).date() + timedelta(days=1) or not scheduled_window(now):
-            raise Withheld("Initialize on the Sunday before pilot start, at 22:30 Cyprus time")
+        if start != now.astimezone(CYPRUS).date() + timedelta(days=1) or now.astimezone(CYPRUS).weekday() != 6:
+            raise Withheld("Initialize on the Sunday before pilot start, before Monday begins in Cyprus")
         history = fetch_daily(date(2022, 5, 16), finalized_through(now))
         bootstrap(store, pilot_id, start, history, now)
     spec, spec_hash, model = load_pilot(store, pilot_id)
